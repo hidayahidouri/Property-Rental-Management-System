@@ -1,0 +1,9 @@
+$kind: http-request
+name: http://localhost:5000/api/auth/register
+description: ""
+url: http://localhost:5000/api/auth/register
+method: POST
+body:
+  type: json
+  content: '{ "nom": "Hidaya", "email": "hidaya5@mail.com", "mot_de_passe": "monmotdepasse2026", "role": ["proprietaire"] }'
+order: 1000
