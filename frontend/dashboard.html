@@ -7,33 +7,95 @@
     body { font-family: Arial, sans-serif; background: #f4f4f8; margin: 0; padding: 20px; }
     .carte { background: white; max-width: 700px; margin: 0 auto; padding: 24px; border-radius: 10px; }
     .entete { display: flex; justify-content: space-between; align-items: center; }
-    .bien { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-top: 14px; }
+    .bien, #formulaire { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-top: 14px; }
     .bien h3 { margin: 0 0 8px; color: #007bff; }
     .bien p { margin: 4px 0; }
-    button { background: #dc3545; color: white; border: 0; padding: 8px 14px; border-radius: 5px; cursor: pointer; }
+    input { width: 100%; padding: 8px; margin: 4px 0; box-sizing: border-box; }
+    button { color: white; border: 0; padding: 8px 14px; border-radius: 5px; cursor: pointer; margin: 6px 6px 0 0; background: #007bff; }
+    .rouge { background: #dc3545; }
   </style>
 </head>
 <body>
   <div class="carte">
     <div class="entete">
       <h2>Liste des Biens Immobiliers</h2>
-      <button onclick="deconnexion()">Déconnexion</button>
+      <button class="rouge" onclick="deconnexion()">Déconnexion</button>
     </div>
+
+    <div id="formulaire" style="display:none">
+      <h3>Ajouter un bien</h3>
+      <input id="titre" placeholder="Titre">
+      <input id="adresse" placeholder="Adresse">
+      <input id="prix" type="number" placeholder="Prix par mois (DT)">
+      <input id="description" placeholder="Description (facultatif)">
+      <button onclick="ajouter()">Ajouter</button>
+    </div>
+
+    <p id="message"></p>
     <div id="liste"></div>
   </div>
 
   <script>
-    if (!localStorage.getItem('token')) window.location.href = 'login.html';
+    const API = 'http://localhost:5000/api/properties';
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = 'login.html';
+
+    // Lit l'id et les rôles de l'utilisateur dans le token (affichage seulement)
+    const moi = token ? JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) : {};
+    if ((moi.roles || []).includes('proprietaire')) document.getElementById('formulaire').style.display = 'block';
 
     function deconnexion() {
       localStorage.removeItem('token');
       window.location.href = 'login.html';
     }
 
+    function afficher(texte, ok) {
+      const m = document.getElementById('message');
+      m.textContent = texte;
+      m.style.color = ok ? 'green' : 'red';
+    }
+
+    async function appeler(url, methode, corps) {
+      try {
+        const r = await fetch(url, {
+          method: methode,
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: corps ? JSON.stringify(corps) : undefined
+        });
+        if (r.status === 401) deconnexion();
+        return { ok: r.ok, data: await r.json() };
+      } catch {
+        return { ok: false, data: { erreur: 'Impossible de contacter le serveur.' } };
+      }
+    }
+
+    async function ajouter() {
+      const v = (id) => document.getElementById(id).value;
+      const { ok, data } = await appeler(API, 'POST', { titre: v('titre'), adresse: v('adresse'), prix: Number(v('prix')), description: v('description') });
+      afficher(ok ? data.message : data.erreur, ok);
+      if (ok) {
+        ['titre', 'adresse', 'prix', 'description'].forEach((id) => (document.getElementById(id).value = ''));
+        charger();
+      }
+    }
+
+    async function changerStatut(id, statut) {
+      const { ok, data } = await appeler(API + '/' + id, 'PUT', { statut });
+      afficher(ok ? data.message : data.erreur, ok);
+      charger();
+    }
+
+    async function supprimer(id) {
+      if (!confirm('Supprimer ce bien ?')) return;
+      const { ok, data } = await appeler(API + '/' + id, 'DELETE');
+      afficher(ok ? data.message : data.erreur, ok);
+      charger();
+    }
+
     async function charger() {
-      const reponse = await fetch('http://localhost:5000/api/properties');
-      const biens = await reponse.json();
+      const { data: biens } = await appeler(API, 'GET');
       const liste = document.getElementById('liste');
+      liste.innerHTML = '';
       if (!biens.length) liste.textContent = 'Aucun bien pour le moment.';
       biens.forEach((b) => {
         const div = document.createElement('div');
@@ -43,6 +105,17 @@
         div.children[1].textContent = 'Adresse : ' + b.adresse;
         div.children[2].textContent = 'Prix : ' + b.prix + ' DT / mois';
         div.children[3].textContent = 'Statut : ' + b.statut + (b.description ? ' | ' + b.description : '');
+
+        if (b.owner_id === moi.id) {   // boutons seulement sur SES biens
+          const s = document.createElement('button');
+          s.textContent = b.statut === 'libre' ? 'Marquer loué' : 'Marquer libre';
+          s.onclick = () => changerStatut(b.id, b.statut === 'libre' ? 'loue' : 'libre');
+          const d = document.createElement('button');
+          d.textContent = 'Supprimer';
+          d.className = 'rouge';
+          d.onclick = () => supprimer(b.id);
+          div.append(s, d);
+        }
         liste.appendChild(div);
       });
     }
