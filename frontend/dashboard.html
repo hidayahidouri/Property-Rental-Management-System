@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Liste des biens</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f8; margin: 0; padding: 20px; }
+    .carte { background: white; max-width: 700px; margin: 0 auto; padding: 24px; border-radius: 10px; }
+    .entete { display: flex; justify-content: space-between; align-items: center; }
+    .bien { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-top: 14px; }
+    .bien h3 { margin: 0 0 8px; color: #007bff; }
+    .bien p { margin: 4px 0; }
+    button { background: #dc3545; color: white; border: 0; padding: 8px 14px; border-radius: 5px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="carte">
+    <div class="entete">
+      <h2>Liste des Biens Immobiliers</h2>
+      <button onclick="deconnexion()">Déconnexion</button>
+    </div>
+    <div id="liste"></div>
+  </div>
+
+  <script>
+    if (!localStorage.getItem('token')) window.location.href = 'login.html';
+
+    function deconnexion() {
+      localStorage.removeItem('token');
+      window.location.href = 'login.html';
+    }
+
+    async function charger() {
+      const reponse = await fetch('http://localhost:5000/api/properties');
+      const biens = await reponse.json();
+      const liste = document.getElementById('liste');
+      if (!biens.length) liste.textContent = 'Aucun bien pour le moment.';
+      biens.forEach((b) => {
+        const div = document.createElement('div');
+        div.className = 'bien';
+        div.innerHTML = '<h3></h3><p></p><p></p><p></p>';
+        div.children[0].textContent = b.titre;
+        div.children[1].textContent = 'Adresse : ' + b.adresse;
+        div.children[2].textContent = 'Prix : ' + b.prix + ' DT / mois';
+        div.children[3].textContent = 'Statut : ' + b.statut + (b.description ? ' | ' + b.description : '');
+        liste.appendChild(div);
+      });
+    }
+    charger();
+  </script>
+</body>
+</html>

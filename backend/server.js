@@ -5,7 +5,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -19,7 +18,7 @@ nodemailer.createTestAccount()
   .then((a) => {
     mailer = nodemailer.createTransport({ host: a.smtp.host, port: a.smtp.port, secure: a.smtp.secure, auth: { user: a.user, pass: a.pass } });
   })
-  .catch(() => console.log('Boîte mail de test indisponible : les codes s\'afficheront ici.'));
+  .catch(() => console.log("Boîte mail de test indisponible : les codes s'afficheront ici."));
 
 const sign = (id, roles) => jwt.sign({ id, roles }, SECRET, { expiresIn: '2h' });
 
@@ -46,8 +45,13 @@ const auth = (req, res, next) => {
   }
 };
 
+// Réservé aux propriétaires connectés
+const owner = (req, res, next) =>
+  req.user.roles.includes('proprietaire') ? next() : res.status(403).json({ erreur: 'Réservé aux propriétaires.' });
+
 app.get('/api/test', (req, res) => res.json({ message: 'Le serveur fonctionne !' }));
 
+// ---------------- AUTHENTIFICATION ----------------
 app.post('/api/auth/register', route(async (req, res) => {
   const { nom, email, mot_de_passe, role } = req.body;
   const roles = toRoles(role);
@@ -64,7 +68,6 @@ app.post('/api/auth/register', route(async (req, res) => {
     [nom, email, hash, roles.join(','), code]
   );
 
-  // En développement : le code s'affiche dans le terminal, l'email est tenté en arrière-plan
   console.log(`Code de vérification pour ${email} : ${code}`);
   mailer?.sendMail({ from: 'no-reply@rental.com', to: email, subject: 'Code de vérification', text: `Votre code : ${code}` }).catch(() => {});
 
@@ -97,4 +100,35 @@ app.put('/api/auth/roles', auth, route(async (req, res) => {
   res.json({ message: 'Rôles mis à jour.', token: sign(req.user.id, roles), roles });
 }));
 
-app.listen(5000, () => console.log('Serveur lancé sur http://localhost:5000'));
+// ---------------- BIENS IMMOBILIERS ----------------
+app.get('/api/properties', route(async (req, res) => {
+  const [rows] = await db.query('SELECT * FROM properties');
+  res.json(rows);
+}));
+
+app.post('/api/properties', auth, owner, route(async (req, res) => {
+  const { titre, adresse, prix, description } = req.body;
+  if (!titre || !adresse || !(prix > 0)) return res.status(400).json({ erreur: 'Titre, adresse et prix valides obligatoires.' });
+  const [r] = await db.query('INSERT INTO properties (owner_id, titre, adresse, prix, description) VALUES (?, ?, ?, ?, ?)', [req.user.id, titre, adresse, prix, description || null]);
+  res.status(201).json({ message: 'Bien ajouté.', id: r.insertId });
+}));
+
+app.put('/api/properties/:id', auth, owner, route(async (req, res) => {
+  const { titre, adresse, prix, description, statut } = req.body;
+  if (statut && !['libre', 'loue'].includes(statut)) return res.status(400).json({ erreur: 'Statut invalide (libre ou loue).' });
+  const [r] = await db.query(
+    'UPDATE properties SET titre = COALESCE(?, titre), adresse = COALESCE(?, adresse), prix = COALESCE(?, prix), description = COALESCE(?, description), statut = COALESCE(?, statut) WHERE id = ? AND owner_id = ?',
+    [titre, adresse, prix, description, statut, req.params.id, req.user.id]
+  );
+  if (!r.affectedRows) return res.status(404).json({ erreur: 'Bien introuvable.' });
+  res.json({ message: 'Bien modifié.' });
+}));
+
+app.delete('/api/properties/:id', auth, owner, route(async (req, res) => {
+  const [r] = await db.query('DELETE FROM properties WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id]);
+  if (!r.affectedRows) return res.status(404).json({ erreur: 'Bien introuvable.' });
+  res.json({ message: 'Bien supprimé.' });
+}));
+
+app.listen(5000, () => console.log('Serveur lancé sur http://localhost:5000'));  
+  

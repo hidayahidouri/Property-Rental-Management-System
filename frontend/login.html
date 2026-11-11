@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Connexion</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 360px; margin: 80px auto; }
+    input, button { width: 100%; padding: 10px; margin: 6px 0; box-sizing: border-box; }
+    #message { color: red; }
+  </style>
+</head>
+<body>
+  <h2>Connexion</h2>
+  <input id="email" type="email" placeholder="Email">
+  <input id="mdp" type="password" placeholder="Mot de passe">
+  <button onclick="seConnecter()">Se connecter</button>
+  <p id="message"></p>
+
+  <script>
+    async function seConnecter() {
+      try {
+        const reponse = await fetch('http://localhost:5000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            mot_de_passe: document.getElementById('mdp').value
+          })
+        });
+        const data = await reponse.json();
+        if (reponse.ok) {
+          localStorage.setItem('token', data.token);
+          window.location.href = 'dashboard.html';
+        } else {
+          document.getElementById('message').textContent = data.erreur;
+        }
+      } catch (e) {
+        document.getElementById('message').textContent = 'Impossible de contacter le serveur.';
+      }
+    }
+  </script>
+</body>
+</html>
