@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Inscription</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 360px; margin: 60px auto; }
+    input[type=text], input[type=email], input[type=password] { width: 100%; padding: 10px; margin: 6px 0; box-sizing: border-box; }
+    button { width: 100%; padding: 10px; margin: 10px 0; }
+    label { display: block; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div id="etape1">
+    <h2>Inscription</h2>
+    <input id="nom" type="text" placeholder="Nom">
+    <input id="email" type="email" placeholder="Email">
+    <input id="mdp" type="password" placeholder="Mot de passe (8 caractères minimum)">
+    <label><input type="checkbox" id="proprietaire"> Propriétaire</label>
+    <label><input type="checkbox" id="locataire"> Locataire</label>
+    <button onclick="inscrire()">Créer mon compte</button>
+  </div>
+
+  <div id="etape2" style="display:none">
+    <h2>Vérification</h2>
+    <p>Entrez le code à 6 chiffres.</p>
+    <input id="code" type="text" placeholder="Code">
+    <button onclick="verifier()">Valider</button>
+  </div>
+
+  <p id="message"></p>
+  <p><a href="login.html">Déjà un compte ? Se connecter</a></p>
+
+  <script>
+    const API = 'http://localhost:5000/api/auth/';
+    const val = (id) => document.getElementById(id).value;
+
+    function afficher(texte, ok) {
+      const m = document.getElementById('message');
+      m.textContent = texte;
+      m.style.color = ok ? 'green' : 'red';
+    }
+
+    async function envoyer(route, donnees) {
+      try {
+        const r = await fetch(API + route, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(donnees)
+        });
+        return { ok: r.ok, data: await r.json() };
+      } catch {
+        return { ok: false, data: { erreur: 'Impossible de contacter le serveur.' } };
+      }
+    }
+
+    async function inscrire() {
+      const role = ['proprietaire', 'locataire'].filter((r) => document.getElementById(r).checked);
+      const { ok, data } = await envoyer('register', { nom: val('nom'), email: val('email'), mot_de_passe: val('mdp'), role });
+      if (ok) {
+        document.getElementById('etape1').style.display = 'none';
+        document.getElementById('etape2').style.display = 'block';
+      }
+      afficher(ok ? data.message : data.erreur, ok);
+    }
+
+    async function verifier() {
+      const { ok, data } = await envoyer('verify', { email: val('email'), code: val('code') });
+      afficher(ok ? 'Compte vérifié ! Redirection...' : data.erreur, ok);
+      if (ok) setTimeout(() => (window.location.href = 'login.html'), 1500);
+    }
+  </script>
+</body>
+</html>
