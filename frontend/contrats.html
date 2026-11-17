@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Mes contrats</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f8; margin: 0; padding: 20px; }
+    .carte { background: white; max-width: 700px; margin: 0 auto; padding: 24px; border-radius: 10px; }
+    .entete { display: flex; justify-content: space-between; align-items: center; }
+    .contrat, #formulaire { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-top: 14px; }
+    .contrat h3 { margin: 0 0 8px; color: #007bff; }
+    .contrat p { margin: 4px 0; }
+    input, select { width: 100%; padding: 8px; margin: 4px 0; box-sizing: border-box; }
+    button { color: white; border: 0; padding: 8px 14px; border-radius: 5px; cursor: pointer; margin-top: 6px; background: #007bff; }
+    .rouge { background: #dc3545; }
+  </style>
+</head>
+<body>
+  <div class="carte">
+    <div class="entete">
+      <h2>Mes contrats</h2>
+      <a href="dashboard.html">&larr; Mes biens</a>
+    </div>
+
+    <div id="formulaire" style="display:none">
+      <h3>Nouveau contrat</h3>
+      <select id="bien"></select>
+      <input id="email" type="email" placeholder="Email du locataire">
+      Début <input id="debut" type="date">
+      Fin <input id="fin" type="date">
+      <input id="loyer" type="number" placeholder="Loyer par mois (facultatif)">
+      <button onclick="creer()">Créer le contrat</button>
+    </div>
+
+    <p id="message"></p>
+    <div id="liste"></div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:5000/api/';
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = 'login.html';
+
+    const moi = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const estProprio = (moi.roles || []).includes('proprietaire');
+    if (estProprio) document.getElementById('formulaire').style.display = 'block';
+
+    const v = (id) => document.getElementById(id).value;
+    const date = (d) => new Date(d).toLocaleDateString('fr-FR');
+
+    function afficher(texte, ok) {
+      const m = document.getElementById('message');
+      m.textContent = texte;
+      m.style.color = ok ? 'green' : 'red';
+    }
+
+    async function appeler(route, methode, corps) {
+      try {
+        const r = await fetch(API + route, {
+          method: methode,
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: corps ? JSON.stringify(corps) : undefined
+        });
+        if (r.status === 401) { localStorage.removeItem('token'); window.location.href = 'login.html'; }
+        return { ok: r.ok, data: await r.json() };
+      } catch {
+        return { ok: false, data: { erreur: 'Impossible de contacter le serveur.' } };
+      }
+    }
+
+    async function creer() {
+      const { ok, data } = await appeler('contracts', 'POST', {
+        property_id: Number(v('bien')), tenant_email: v('email'),
+        date_debut: v('debut'), date_fin: v('fin'), loyer: v('loyer') ? Number(v('loyer')) : undefined
+      });
+      afficher(ok ? data.message : data.erreur, ok);
+      if (ok) charger();
+    }
+
+    async function terminer(id) {
+      if (!confirm('Terminer ce contrat ?')) return;
+      const { ok, data } = await appeler('contracts/' + id + '/terminer', 'PUT');
+      afficher(ok ? data.message : data.erreur, ok);
+      charger();
+    }
+
+    async function charger() {
+      if (estProprio) {
+        const biens = (await appeler('properties', 'GET')).data.filter((b) => b.owner_id === moi.id && b.statut === 'libre');
+        const select = document.getElementById('bien');
+        select.innerHTML = biens.length ? '' : '<option>Aucun bien libre</option>';
+        biens.forEach((b) => select.add(new Option(b.titre + ' (' + b.adresse + ')', b.id)));
+      }
+
+      const contrats = (await appeler('contracts', 'GET')).data;
+      const liste = document.getElementById('liste');
+      liste.innerHTML = '';
+      if (!contrats.length) liste.textContent = 'Aucun contrat pour le moment.';
+      contrats.forEach((c) => {
+        const div = document.createElement('div');
+        div.className = 'contrat';
+        div.innerHTML = '<h3></h3><p></p><p></p><p></p>';
+        div.children[0].textContent = c.titre + ' - ' + c.adresse;
+        div.children[1].textContent = 'Locataire : ' + c.locataire;
+        div.children[2].textContent = 'Du ' + date(c.date_debut) + ' au ' + date(c.date_fin);
+        div.children[3].textContent = 'Loyer : ' + c.loyer + ' DT / mois | Statut : ' + c.statut;
+        if (estProprio && c.statut === 'actif') {
+          const b = document.createElement('button');
+          b.textContent = 'Terminer';
+          b.className = 'rouge';
+          b.onclick = () => terminer(c.id);
+          div.appendChild(b);
+        }
+        liste.appendChild(div);
+      });
+    }
+    charger();
+  </script>
+</body>
+</html>

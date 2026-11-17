@@ -130,5 +130,39 @@ app.delete('/api/properties/:id', auth, owner, route(async (req, res) => {
   res.json({ message: 'Bien supprimé.' });
 }));
 
+app.post('/api/contracts', auth, owner, route(async (req, res) => {
+  const { property_id, tenant_email, date_debut, date_fin, loyer } = req.body;
+  if (!property_id || !tenant_email || !date_debut || !date_fin || date_fin <= date_debut)
+    return res.status(400).json({ erreur: 'Bien, email du locataire et dates valides obligatoires.' });
+
+  const [[bien]] = await db.query('SELECT * FROM properties WHERE id = ? AND owner_id = ?', [property_id, req.user.id]);
+  if (!bien) return res.status(404).json({ erreur: 'Bien introuvable.' });
+  if (bien.statut !== 'libre') return res.status(400).json({ erreur: 'Ce bien est déjà loué.' });
+
+  const [[loc]] = await db.query("SELECT id FROM users WHERE email = ? AND verifie = 1 AND FIND_IN_SET('locataire', role)", [tenant_email]);
+  if (!loc) return res.status(404).json({ erreur: 'Locataire introuvable (compte vérifié avec le rôle locataire).' });
+  if (loc.id === req.user.id) return res.status(400).json({ erreur: 'Vous ne pouvez pas louer votre propre bien.' });
+
+  const [r] = await db.query('INSERT INTO contracts (property_id, tenant_id, date_debut, date_fin, loyer) VALUES (?, ?, ?, ?, ?)', [property_id, loc.id, date_debut, date_fin, loyer || bien.prix]);
+  await db.query("UPDATE properties SET statut = 'loue' WHERE id = ?", [property_id]);
+  res.status(201).json({ message: 'Contrat créé.', id: r.insertId });
+}));
+
+app.get('/api/contracts', auth, route(async (req, res) => {
+  const [rows] = await db.query(
+    'SELECT c.*, p.titre, p.adresse, u.nom AS locataire FROM contracts c JOIN properties p ON p.id = c.property_id JOIN users u ON u.id = c.tenant_id WHERE p.owner_id = ? OR c.tenant_id = ?',
+    [req.user.id, req.user.id]
+  );
+  res.json(rows);
+}));
+
+app.put('/api/contracts/:id/terminer', auth, owner, route(async (req, res) => {
+  const [r] = await db.query(
+    "UPDATE contracts c JOIN properties p ON p.id = c.property_id SET c.statut = 'termine', p.statut = 'libre' WHERE c.id = ? AND p.owner_id = ? AND c.statut = 'actif'",
+    [req.params.id, req.user.id]
+  );
+  if (!r.affectedRows) return res.status(404).json({ erreur: 'Contrat actif introuvable.' });
+  res.json({ message: 'Contrat terminé, le bien est de nouveau libre.' });
+})); 
 app.listen(5000, () => console.log('Serveur lancé sur http://localhost:5000'));  
   
